@@ -1,0 +1,20 @@
+{
+  "venvPath": ".",
+  "venv": ".venv",
+  "typeCheckingMode": "basic",
+  "extraPaths": [
+    "/usr/lib/python3.14/site-packages",
+    "/usr/lib/python3.13/site-packages",
+    "/opt/homebrew/lib/python3.14/site-packages",
+    "/opt/homebrew/lib/python3.13/site-packages",
+    "/opt/homebrew/lib/python3.12/site-packages",
+    "/usr/local/lib/python3.14/site-packages",
+    "/usr/local/lib/python3.13/site-packages",
+    "/usr/local/lib/python3.12/site-packages"
+  ],
+  "exclude": ["dlpdlcr230np_python_support_code", ".venv", "media", "gui-media"],
+  "ignore": ["dlpdlcr230np_python_support_code"],
+  "reportMissingTypeStubs": false,
+  "reportUnknownMemberType": false,
+  "reportAttributeAccessIssue": "none"
+}

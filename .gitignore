@@ -1,0 +1,166 @@
+# =========================
+# Python — bytecode & caches
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.pyd
+*.pyo
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+*.whl
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage / type checkers
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+.pytest/
+cover/
+htmlcov/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyright/
+.pyre/
+
+# Jupyter
+.ipynb_checkpoints
+*.ipynb
+
+# pyenv / virtual envs
+.venv/
+.venv-gui/
+venv/
+ENV/
+env/
+.env
+.conda/
+
+# =========================
+# Project — media & runtime
+# =========================
+# User videos — don't commit personal media. Keep the folders with .gitkeep so they clone empty.
+media/*
+gui-media/*
+# If you keep placeholder .gitkeep files, allow them:
+!media/.gitkeep
+!gui-media/.gitkeep
+
+# Thumbnails are cached outside the repo (~/.cache/rasp-ui/thumbnails on Linux,
+# ~/Library/Caches/rasp-ui/thumbnails on macOS). If a local cache ever appears, ignore it:
+.cache/
+thumbnails/
+*.thumb.jpg
+
+# OS-generated thumbnails
+._*
+
+# Logs & temp
+*.log
+*.pid
+*.seed
+*.pid.lock
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.DS_Store
+.DS_Store?
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.directory
+.AppleDouble
+.LSOverride
+
+# =========================
+# IDE / editors
+# =========================
+# VS Code — keep shared settings, ignore everything else
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/tasks.json
+!.vscode/launch.json
+# Uncomment to ignore all of .vscode:
+# .vscode/
+
+# JetBrains
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Vim / Neovim
+*.swp
+*.swo
+*~
+.netrwhist
+Session.vim
+.tags
+tags
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# =========================
+# TI / hardware vendor — optional
+# =========================
+# The DLP230NP support package is large (~60MB zip) and not needed for GUI-only work.
+# GUI contributors should leave this uncommented. Hardware owners who want to version it
+# can comment the next line out and `git add -f dlpdlcr230np_python_support_code/`.
+dlpdlcr230np_python_support_code/
+*.zip
+# Keep the manifest HTML if you do track the package
+# !dlpdlcr230np_python_support_code/**/*.py
+
+# =========================
+# Misc project cruft
+# =========================
+# Mise / tool version managers (opencode already uses these locally)
+.mise.toml
+# Secrets
+.env.local
+.env.*.local
+*.pem
+*.key
