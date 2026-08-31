@@ -281,7 +281,7 @@ def _header_button(label: str) -> Gtk.Button:
     button = Gtk.Button.new_with_label(label)
     button.get_style_context().add_class("glass")
     button.set_image(
-        Gtk.Image.new_from_icon_name("go-previous-symbolic", Gtk.IconSize.BUTTON)
+        Gtk.Image.new_from_icon_name("pan-start-symbolic", Gtk.IconSize.BUTTON)
     )
     button.set_always_show_image(True)
     return button
@@ -398,8 +398,8 @@ class HomeView(Gtk.Box):
         row.set_halign(Gtk.Align.CENTER)
         stage.pack_start(row, False, False, 0)
 
-        self.usb_card = OptionCard("External disk", "gold", self._choose_usb)
-        self.computer_card = OptionCard("Computer", "teal", self._choose_computer)
+        self.usb_card = OptionCard("external disk", "gold", self._choose_usb)
+        self.computer_card = OptionCard("computer", "teal", self._choose_computer)
         row.pack_start(self.usb_card, False, False, 0)
         row.pack_start(self.computer_card, False, False, 0)
         self._refresh()
@@ -437,10 +437,10 @@ class ComputerView(Gtk.Box):
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
         header.get_style_context().add_class("library-header")
         self.pack_start(header, False, False, 0)
-        home = _header_button("Home")
+        home = _header_button("home")
         home.connect("clicked", lambda *_args: on_home())
         header.pack_start(home, False, False, 0)
-        title = Gtk.Label(label="Computer")
+        title = Gtk.Label(label="computer")
         title.set_xalign(0)
         title.get_style_context().add_class("library-title")
         header.pack_start(title, True, True, 0)
@@ -450,19 +450,19 @@ class ComputerView(Gtk.Box):
         stage.set_valign(Gtk.Align.CENTER)
         self.pack_start(stage, True, True, 0)
 
-        waiting = Gtk.Label(label="Waiting for a computer")
+        waiting = Gtk.Label(label="waiting for a computer")
         waiting.get_style_context().add_class("computer-title")
         copy = Gtk.Label(
-            label="A laptop or desktop will send video here.\n"
+            label="a laptop or desktop will send video here.\n"
             "Wi‑Fi, cable, or screen-share can be plugged in later."
         )
         copy.set_justify(Gtk.Justification.CENTER)
         copy.get_style_context().add_class("computer-copy")
-        code_label = Gtk.Label(label="This projector")
+        code_label = Gtk.Label(label="this projector")
         code_label.get_style_context().add_class("option-label")
         code = Gtk.Label(label="TINK-230")
         code.get_style_context().add_class("pairing-code")
-        note = Gtk.Label(label="Placeholder name until pairing is implemented")
+        note = Gtk.Label(label="placeholder name until pairing is implemented")
         note.get_style_context().add_class("preview-hint")
         stage.pack_start(waiting, False, False, 0)
         stage.pack_start(copy, False, False, 0)
@@ -470,7 +470,7 @@ class ComputerView(Gtk.Box):
         stage.pack_start(code, False, False, 0)
         stage.pack_start(note, False, False, 0)
 
-        hint = Gtk.Label(label="Esc returns to Home")
+        hint = Gtk.Label(label="esc returns to Home")
         hint.set_xalign(0)
         hint.get_style_context().add_class("hint-bar")
         self.pack_start(hint, False, False, 0)
@@ -537,14 +537,14 @@ class LibraryView(Gtk.Box):
         header.get_style_context().add_class("library-header")
         self.pack_start(header, False, False, 0)
 
-        home = _header_button("Home")
+        home = _header_button("home")
         home.connect("clicked", lambda *_args: on_home())
         header.pack_start(home, False, False, 0)
 
         titles = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
         header.pack_start(titles, True, True, 0)
 
-        title = Gtk.Label(label="USB library")
+        title = Gtk.Label(label="usb library")
         title.set_xalign(0)
         title.get_style_context().add_class("library-title")
         titles.pack_start(title, False, False, 0)
@@ -584,10 +584,10 @@ class LibraryView(Gtk.Box):
         empty = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         empty.set_valign(Gtk.Align.CENTER)
         empty.set_halign(Gtk.Align.CENTER)
-        empty_label = Gtk.Label(label="No videos on this drive")
+        empty_label = Gtk.Label(label="no videos on this drive")
         empty_label.get_style_context().add_class("empty-state")
         empty_hint = Gtk.Label(
-            label="Plug in a USB stick or external disk with MP4, MKV, MOV, or similar files"
+            label="plug in a USB stick or external disk with MP4, MKV, MOV, or similar files"
         )
         empty_hint.get_style_context().add_class("empty-hint")
         empty.pack_start(empty_label, False, False, 0)
