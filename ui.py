@@ -38,12 +38,15 @@ VIDEO_EXTENSIONS = {
 
 CARD_WIDTH = 320
 CARD_HEIGHT = 180
+SPLASH_MS = 2000
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
+LOGO_PATH = ASSETS_DIR / "tink-logo.png"
 
 
 CSS = """
 window {
-    background: #0b0d10;
-    color: #f1f3f5;
+    background: #000000;
+    color: #f2ede4;
 }
 
 flowbox {
@@ -58,13 +61,104 @@ flowboxchild {
 
 flowboxchild:selected .media-card,
 .media-card:hover {
-    background: #252b33;
-    border-color: #7aa2c4;
+    background: #16120c;
+    border-color: #e5c07b;
+}
+
+.splash {
+    background: #000000;
+}
+
+.home-stage, .computer-stage {
+    background: #000000;
+}
+
+.home-mark {
+    color: #f2ede4;
+    font-size: 28px;
+    font-weight: 500;
+    letter-spacing: 14px;
+}
+
+.option-card {
+    background-image: linear-gradient(
+        160deg,
+        rgba(229, 192, 123, 0.22),
+        rgba(152, 193, 192, 0.10)
+    );
+    background-color: rgba(242, 237, 228, 0.05);
+    border: 1px solid rgba(242, 237, 228, 0.20);
+    border-radius: 28px;
+    padding: 8px 28px;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45),
+                inset 0 1px 0 rgba(242, 237, 228, 0.28);
+}
+
+.option-card.gold.selected {
+    background-image: linear-gradient(
+        160deg,
+        rgba(229, 192, 123, 0.38),
+        rgba(229, 192, 123, 0.08)
+    );
+    border-color: rgba(229, 192, 123, 0.70);
+    box-shadow: 0 22px 50px rgba(0, 0, 0, 0.5),
+                inset 0 1px 0 rgba(242, 237, 228, 0.42);
+}
+
+.option-card.teal.selected {
+    background-image: linear-gradient(
+        160deg,
+        rgba(152, 193, 192, 0.38),
+        rgba(152, 193, 192, 0.08)
+    );
+    border-color: rgba(152, 193, 192, 0.70);
+    box-shadow: 0 22px 50px rgba(0, 0, 0, 0.5),
+                inset 0 1px 0 rgba(242, 237, 228, 0.42);
+}
+
+.option-label {
+    color: #98c1c0;
+    font-size: 13px;
+}
+
+.option-title {
+    color: #f2ede4;
+    font-size: 22px;
+    font-weight: 600;
+}
+
+button.glass {
+    background-image: linear-gradient(
+        160deg,
+        rgba(229, 192, 123, 0.22),
+        rgba(152, 193, 192, 0.10)
+    );
+    background-color: rgba(242, 237, 228, 0.05);
+    border: 1px solid rgba(242, 237, 228, 0.22);
+    border-radius: 20px;
+    padding: 8px 16px;
+    color: #f2ede4;
+    box-shadow: inset 0 1px 0 rgba(242, 237, 228, 0.28);
+}
+
+button.glass:hover,
+button.glass:active,
+button.glass:checked {
+    background-image: linear-gradient(
+        160deg,
+        rgba(229, 192, 123, 0.32),
+        rgba(152, 193, 192, 0.12)
+    );
+    border-color: rgba(229, 192, 123, 0.55);
+}
+
+button.glass label {
+    color: #f2ede4;
 }
 
 .library-header {
     background: #12151a;
-    padding: 20px 28px 16px 28px;
+    padding: 16px 28px;
     border-bottom: 1px solid #2a2e34;
 }
 
@@ -146,6 +240,24 @@ flowboxchild:selected .media-card,
     color: #8b949e;
     font-size: 16px;
 }
+
+.computer-title {
+    color: #f1f3f5;
+    font-size: 32px;
+    font-weight: 700;
+}
+
+.computer-copy {
+    color: #9da5af;
+    font-size: 16px;
+}
+
+.pairing-code {
+    color: #f1f3f5;
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: 4px;
+}
 """
 
 
@@ -165,6 +277,16 @@ def load_css() -> None:
     )
 
 
+def _header_button(label: str) -> Gtk.Button:
+    button = Gtk.Button.new_with_label(label)
+    button.get_style_context().add_class("glass")
+    button.set_image(
+        Gtk.Image.new_from_icon_name("go-previous-symbolic", Gtk.IconSize.BUTTON)
+    )
+    button.set_always_show_image(True)
+    return button
+
+
 def format_size(path: Path) -> str:
     size = path.stat().st_size
     for unit in ("B", "KB", "MB", "GB"):
@@ -180,6 +302,178 @@ def format_meta(path: Path) -> str:
     if size == 0:
         return ext
     return f"{ext}  ·  {format_size(path)}"
+
+
+class SplashView(Gtk.EventBox):
+    def __init__(self, on_finished: Callable[[], None]) -> None:
+        super().__init__()
+        self.on_finished = on_finished
+        self._done = False
+        self.get_style_context().add_class("splash")
+        self.connect("button-press-event", lambda *_args: self.finish())
+
+        stage = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=16)
+        stage.set_halign(Gtk.Align.CENTER)
+        stage.set_valign(Gtk.Align.CENTER)
+        self.add(stage)
+
+        if LOGO_PATH.exists():
+            pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
+                str(LOGO_PATH), 280, 280, True
+            )
+            image = Gtk.Image.new_from_pixbuf(pixbuf)
+            stage.pack_start(image, False, False, 0)
+        else:
+            mark = Gtk.Label(label="TINK")
+            mark.get_style_context().add_class("home-mark")
+            stage.pack_start(mark, False, False, 0)
+
+        hint = Gtk.Label(label=" ")
+        hint.get_style_context().add_class("preview-hint")
+        stage.pack_start(hint, False, False, 0)
+        self.show_all()
+
+    def finish(self) -> bool:
+        if self._done:
+            return False
+        self._done = True
+        self.on_finished()
+        return False
+
+
+class OptionCard(Gtk.EventBox):
+    def __init__(self, title: str, tone: str, on_choose: Callable[[], None]) -> None:
+        super().__init__()
+        self.on_choose = on_choose
+        self.set_visible_window(False)
+        self.connect("button-press-event", self._on_press)
+
+        self.frame = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.frame.set_size_request(280, 112)
+        self.frame.get_style_context().add_class("option-card")
+        self.frame.get_style_context().add_class(tone)
+        self.add(self.frame)
+
+        title_label = Gtk.Label(label=title)
+        title_label.set_halign(Gtk.Align.CENTER)
+        title_label.set_valign(Gtk.Align.CENTER)
+        title_label.get_style_context().add_class("option-title")
+        self.frame.pack_start(title_label, True, True, 0)
+        self.show_all()
+
+    def set_selected(self, selected: bool) -> None:
+        ctx = self.frame.get_style_context()
+        if selected:
+            ctx.add_class("selected")
+        else:
+            ctx.remove_class("selected")
+
+    def _on_press(self, *_args) -> bool:
+        self.on_choose()
+        return True
+
+
+class HomeView(Gtk.Box):
+    def __init__(
+        self,
+        on_usb: Callable[[], None],
+        on_computer: Callable[[], None],
+    ) -> None:
+        super().__init__(orientation=Gtk.Orientation.VERTICAL)
+        self.on_usb = on_usb
+        self.on_computer = on_computer
+        self.selected = 0
+        self.get_style_context().add_class("home-stage")
+
+        stage = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=56)
+        stage.set_halign(Gtk.Align.CENTER)
+        stage.set_valign(Gtk.Align.CENTER)
+        self.pack_start(stage, True, True, 0)
+
+        mark = Gtk.Label(label="TINK")
+        mark.get_style_context().add_class("home-mark")
+        stage.pack_start(mark, False, False, 0)
+
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=28)
+        row.set_halign(Gtk.Align.CENTER)
+        stage.pack_start(row, False, False, 0)
+
+        self.usb_card = OptionCard("External disk", "gold", self._choose_usb)
+        self.computer_card = OptionCard("Computer", "teal", self._choose_computer)
+        row.pack_start(self.usb_card, False, False, 0)
+        row.pack_start(self.computer_card, False, False, 0)
+        self._refresh()
+
+    def move_selection(self, delta: int) -> None:
+        self.selected = (self.selected + delta) % 2
+        self._refresh()
+
+    def activate_selected(self) -> None:
+        if self.selected == 0:
+            self.on_usb()
+        else:
+            self.on_computer()
+
+    def _choose_usb(self) -> None:
+        self.selected = 0
+        self._refresh()
+        self.on_usb()
+
+    def _choose_computer(self) -> None:
+        self.selected = 1
+        self._refresh()
+        self.on_computer()
+
+    def _refresh(self) -> None:
+        self.usb_card.set_selected(self.selected == 0)
+        self.computer_card.set_selected(self.selected == 1)
+
+
+class ComputerView(Gtk.Box):
+    def __init__(self, on_home: Callable[[], None]) -> None:
+        super().__init__(orientation=Gtk.Orientation.VERTICAL)
+        self.get_style_context().add_class("computer-stage")
+
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
+        header.get_style_context().add_class("library-header")
+        self.pack_start(header, False, False, 0)
+        home = _header_button("Home")
+        home.connect("clicked", lambda *_args: on_home())
+        header.pack_start(home, False, False, 0)
+        title = Gtk.Label(label="Computer")
+        title.set_xalign(0)
+        title.get_style_context().add_class("library-title")
+        header.pack_start(title, True, True, 0)
+
+        stage = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
+        stage.set_halign(Gtk.Align.CENTER)
+        stage.set_valign(Gtk.Align.CENTER)
+        self.pack_start(stage, True, True, 0)
+
+        waiting = Gtk.Label(label="Waiting for a computer")
+        waiting.get_style_context().add_class("computer-title")
+        copy = Gtk.Label(
+            label="A laptop or desktop will send video here.\n"
+            "Wi‑Fi, cable, or screen-share can be plugged in later."
+        )
+        copy.set_justify(Gtk.Justification.CENTER)
+        copy.get_style_context().add_class("computer-copy")
+        code_label = Gtk.Label(label="This projector")
+        code_label.get_style_context().add_class("option-label")
+        code = Gtk.Label(label="TINK-230")
+        code.get_style_context().add_class("pairing-code")
+        note = Gtk.Label(label="Placeholder name until pairing is implemented")
+        note.get_style_context().add_class("preview-hint")
+        stage.pack_start(waiting, False, False, 0)
+        stage.pack_start(copy, False, False, 0)
+        stage.pack_start(code_label, False, False, 0)
+        stage.pack_start(code, False, False, 0)
+        stage.pack_start(note, False, False, 0)
+
+        hint = Gtk.Label(label="Esc returns to Home")
+        hint.set_xalign(0)
+        hint.get_style_context().add_class("hint-bar")
+        self.pack_start(hint, False, False, 0)
 
 
 class MediaCard(Gtk.EventBox):
@@ -230,6 +524,7 @@ class LibraryView(Gtk.Box):
         self,
         media_directory: Path,
         on_open: Callable[[Path], None],
+        on_home: Callable[[], None],
         thumbnail_provider: Callable[[Path], Path | None] | None = None,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
@@ -238,19 +533,26 @@ class LibraryView(Gtk.Box):
         self.thumbnail_provider = thumbnail_provider
         self.cards: list[MediaCard] = []
 
-        header = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
         header.get_style_context().add_class("library-header")
         self.pack_start(header, False, False, 0)
 
-        title = Gtk.Label(label="Library")
+        home = _header_button("Home")
+        home.connect("clicked", lambda *_args: on_home())
+        header.pack_start(home, False, False, 0)
+
+        titles = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        header.pack_start(titles, True, True, 0)
+
+        title = Gtk.Label(label="USB library")
         title.set_xalign(0)
         title.get_style_context().add_class("library-title")
-        header.pack_start(title, False, False, 0)
+        titles.pack_start(title, False, False, 0)
 
         self.subtitle = Gtk.Label()
         self.subtitle.set_xalign(0)
         self.subtitle.get_style_context().add_class("library-subtitle")
-        header.pack_start(self.subtitle, False, False, 0)
+        titles.pack_start(self.subtitle, False, False, 0)
 
         self.body = Gtk.Stack()
         self.body.set_hexpand(True)
@@ -282,10 +584,10 @@ class LibraryView(Gtk.Box):
         empty = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
         empty.set_valign(Gtk.Align.CENTER)
         empty.set_halign(Gtk.Align.CENTER)
-        empty_label = Gtk.Label(label="No videos found")
+        empty_label = Gtk.Label(label="No videos on this drive")
         empty_label.get_style_context().add_class("empty-state")
         empty_hint = Gtk.Label(
-            label="Put MP4, MKV, MOV, or similar files in the media folder"
+            label="Plug in a USB stick or external disk with MP4, MKV, MOV, or similar files"
         )
         empty_hint.get_style_context().add_class("empty-hint")
         empty.pack_start(empty_label, False, False, 0)
@@ -293,7 +595,7 @@ class LibraryView(Gtk.Box):
         self.body.add_named(empty, "empty")
 
         hint = Gtk.Label(
-            label="Click a title to open it    ·    Enter plays    ·    Esc goes back    ·    F11 fullscreen"
+            label="Click a title to open it    ·    Enter plays    ·    Esc Home    ·    F11 fullscreen"
         )
         hint.set_xalign(0)
         hint.get_style_context().add_class("hint-bar")
@@ -413,11 +715,7 @@ class PlayerView(Gtk.Box):
         toolbar.get_style_context().add_class("player-bar")
         self.pack_start(toolbar, False, False, 0)
 
-        back = Gtk.Button.new_with_label("Library")
-        back.set_image(
-            Gtk.Image.new_from_icon_name("go-previous-symbolic", Gtk.IconSize.BUTTON)
-        )
-        back.set_always_show_image(True)
+        back = _header_button("Library")
         back.connect("clicked", lambda *_args: self.stop())
         toolbar.pack_start(back, False, False, 0)
 
@@ -459,42 +757,91 @@ class MediaPlayerWindow(Gtk.Window):
         backend: PlaybackBackend,
         thumbnail_provider: Callable[[Path], Path | None] | None = None,
     ) -> None:
-        super().__init__(title="Rasp UI Media Player")
+        super().__init__(title="TINK Projector")
         self.set_default_size(1280, 720)
         self.connect("delete-event", self._on_delete)
         self.connect("key-press-event", self._on_key_press)
 
         self.stack = Gtk.Stack()
         self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
-        self.stack.set_transition_duration(150)
+        self.stack.set_transition_duration(280)
         self.add(self.stack)
 
+        self.splash = SplashView(self.show_home)
+        self.home = HomeView(self.show_library, self.show_computer)
         self.library = LibraryView(
-            media_directory, self.show_player, thumbnail_provider
+            media_directory, self.show_player, self.show_home, thumbnail_provider
         )
+        self.computer = ComputerView(self.show_home)
         self.player = PlayerView(self.show_library, backend)
+
+        self.stack.add_named(self.splash, "splash")
+        self.stack.add_named(self.home, "home")
         self.stack.add_named(self.library, "library")
+        self.stack.add_named(self.computer, "computer")
         self.stack.add_named(self.player, "player")
-        self.stack.set_visible_child_name("library")
+        self.stack.set_visible_child_name("splash")
 
         self.show_all()
-        self.library.scan()
+        GLib.timeout_add(SPLASH_MS, self.splash.finish)
         if fullscreen:
             self.fullscreen()
 
-    def show_player(self, video: Path) -> None:
-        self.stack.set_visible_child_name("player")
-        self.player.play(video)
+    def show_home(self) -> None:
+        self.stack.set_visible_child_name("home")
 
     def show_library(self) -> None:
         self.stack.set_visible_child_name("library")
         self.library.scan()
 
+    def show_computer(self) -> None:
+        self.stack.set_visible_child_name("computer")
+
+    def show_player(self, video: Path) -> None:
+        self.stack.set_visible_child_name("player")
+        self.player.play(video)
+
     def _on_key_press(self, _widget, event) -> bool:
         key = Gdk.keyval_name(event.keyval)
-        on_player = self.stack.get_visible_child_name() == "player"
+        screen = self.stack.get_visible_child_name()
 
-        if on_player:
+        if key == "F11":
+            window = self.get_window()
+            if window is not None:
+                self.set_fullscreen_mode(
+                    not bool(window.get_state() & Gdk.WindowState.FULLSCREEN)
+                )
+            return True
+
+        if screen == "splash":
+            self.splash.finish()
+            return True
+
+        if screen == "home":
+            if key in {"Left", "Right"}:
+                self.home.move_selection(-1 if key == "Left" else 1)
+                return True
+            if key in {"Return", "KP_Enter"}:
+                self.home.activate_selected()
+                return True
+            return False
+
+        if screen == "computer":
+            if key in {"Escape", "q"}:
+                self.show_home()
+                return True
+            return False
+
+        if screen == "library":
+            if key in {"Escape", "q"}:
+                self.show_home()
+                return True
+            if key in {"Return", "KP_Enter"}:
+                self.library.activate_selected()
+                return True
+            return False
+
+        if screen == "player":
             if key in {"Escape", "q"}:
                 self.player.stop()
                 return True
@@ -507,18 +854,6 @@ class MediaPlayerWindow(Gtk.Window):
             if key == "Right":
                 self.player.seek(10)
                 return True
-            return False
-
-        if key in {"Return", "KP_Enter"}:
-            self.library.activate_selected()
-            return True
-        if key == "F11":
-            window = self.get_window()
-            if window is not None:
-                self.set_fullscreen_mode(
-                    not bool(window.get_state() & Gdk.WindowState.FULLSCREEN)
-                )
-            return True
         return False
 
     def set_fullscreen_mode(self, fullscreen: bool) -> None:
