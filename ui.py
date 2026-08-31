@@ -36,23 +36,116 @@ VIDEO_EXTENSIONS = {
     ".wmv",
 }
 
+CARD_WIDTH = 320
+CARD_HEIGHT = 180
+
 
 CSS = """
-window { background: #111315; color: #f1f3f5; }
-headerbar { background: #171a1e; border-bottom: 1px solid #2a2e34; }
-flowbox { background: #111315; }
+window {
+    background: #0b0d10;
+    color: #f1f3f5;
+}
+
+flowbox {
+    background: #0b0d10;
+}
+
+flowboxchild {
+    padding: 4px;
+    border-radius: 16px;
+    outline: none;
+}
+
+flowboxchild:selected .media-card,
+.media-card:hover {
+    background: #252b33;
+    border-color: #7aa2c4;
+}
+
+.library-header {
+    background: #12151a;
+    padding: 20px 28px 16px 28px;
+    border-bottom: 1px solid #2a2e34;
+}
+
+.library-title {
+    color: #f1f3f5;
+    font-size: 28px;
+    font-weight: 700;
+}
+
+.library-subtitle {
+    color: #9da5af;
+    font-size: 15px;
+}
+
+.hint-bar {
+    background: #12151a;
+    padding: 10px 28px;
+    border-top: 1px solid #2a2e34;
+    color: #8b949e;
+    font-size: 13px;
+}
+
 .media-card {
-    background: #1b1f24; border: 1px solid #2b3138;
-    border-radius: 10px; padding: 8px;
+    background: #1b1f24;
+    border: 1px solid #2b3138;
+    border-radius: 14px;
+    padding: 10px;
 }
-.media-card:hover, .media-card:focus {
-    background: #252b33; border-color: #6f7e8d;
+
+.poster {
+    background: #15191e;
+    border-radius: 8px;
 }
-.media-title { color: #f1f3f5; font-size: 14px; font-weight: 600; }
-.media-meta { color: #98a1ab; font-size: 12px; }
-.empty-state { color: #9da5af; font-size: 18px; }
-.player-bar { background: #111315; padding: 8px 12px; }
-.preview-state { color: #9da5af; font-size: 22px; }
+
+.media-title {
+    color: #f1f3f5;
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.media-meta {
+    color: #98a1ab;
+    font-size: 13px;
+}
+
+.empty-state {
+    color: #c5ccd4;
+    font-size: 26px;
+    font-weight: 600;
+}
+
+.empty-hint {
+    color: #8b949e;
+    font-size: 16px;
+}
+
+.player-bar {
+    background: #12151a;
+    padding: 12px 16px;
+    border-bottom: 1px solid #2a2e34;
+}
+
+.player-title {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.preview-stage {
+    background: #050607;
+}
+
+.preview-state {
+    color: #d7dde4;
+    font-size: 28px;
+    font-weight: 600;
+}
+
+.preview-hint {
+    color: #8b949e;
+    font-size: 16px;
+}
 """
 
 
@@ -81,42 +174,50 @@ def format_size(path: Path) -> str:
     return ""
 
 
-class MediaCard(Gtk.Button):
-    def __init__(self, video: Path, on_open: Callable[[Path], None]) -> None:
+def format_meta(path: Path) -> str:
+    ext = path.suffix.lstrip(".").upper() or "VIDEO"
+    size = path.stat().st_size
+    if size == 0:
+        return ext
+    return f"{ext}  ·  {format_size(path)}"
+
+
+class MediaCard(Gtk.EventBox):
+    def __init__(self, video: Path) -> None:
         super().__init__()
         self.video = video
-        self.get_style_context().add_class("media-card")
-        self.set_relief(Gtk.ReliefStyle.NONE)
-        self.set_tooltip_text(video.name)
-        self.connect("clicked", lambda *_args: on_open(video))
+        self.set_can_focus(False)
+        self.set_visible_window(False)
 
-        content = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=7)
-        self.add(content)
+        frame = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+        frame.get_style_context().add_class("media-card")
+        self.add(frame)
 
         self.image = Gtk.Image.new_from_icon_name(
             "video-x-generic", Gtk.IconSize.DIALOG
         )
-        self.image.set_size_request(240, 135)
-        self.image.set_pixel_size(72)
-        content.pack_start(self.image, False, False, 0)
+        self.image.set_size_request(CARD_WIDTH, CARD_HEIGHT)
+        self.image.set_pixel_size(84)
+        self.image.get_style_context().add_class("poster")
+        frame.pack_start(self.image, False, False, 0)
 
         title = Gtk.Label(label=video.stem)
         title.set_xalign(0)
         title.set_ellipsize(Pango.EllipsizeMode.END)
-        title.set_max_width_chars(25)
+        title.set_max_width_chars(28)
         title.get_style_context().add_class("media-title")
-        content.pack_start(title, False, False, 0)
+        frame.pack_start(title, False, False, 0)
 
-        metadata = Gtk.Label(label=format_size(video))
+        metadata = Gtk.Label(label=format_meta(video))
         metadata.set_xalign(0)
         metadata.get_style_context().add_class("media-meta")
-        content.pack_start(metadata, False, False, 0)
+        frame.pack_start(metadata, False, False, 0)
         self.show_all()
 
     def set_thumbnail(self, thumbnail: Path) -> None:
         try:
             pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
-                str(thumbnail), 240, 135, False
+                str(thumbnail), CARD_WIDTH, CARD_HEIGHT, False
             )
             self.image.set_from_pixbuf(pixbuf)
             self.image.set_pixel_size(1)
@@ -137,28 +238,66 @@ class LibraryView(Gtk.Box):
         self.thumbnail_provider = thumbnail_provider
         self.cards: list[MediaCard] = []
 
+        header = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        header.get_style_context().add_class("library-header")
+        self.pack_start(header, False, False, 0)
+
+        title = Gtk.Label(label="Library")
+        title.set_xalign(0)
+        title.get_style_context().add_class("library-title")
+        header.pack_start(title, False, False, 0)
+
+        self.subtitle = Gtk.Label()
+        self.subtitle.set_xalign(0)
+        self.subtitle.get_style_context().add_class("library-subtitle")
+        header.pack_start(self.subtitle, False, False, 0)
+
+        self.body = Gtk.Stack()
+        self.body.set_hexpand(True)
+        self.body.set_vexpand(True)
+        self.pack_start(self.body, True, True, 0)
+
         self.scroller = Gtk.ScrolledWindow()
         self.scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         self.scroller.set_hexpand(True)
         self.scroller.set_vexpand(True)
-        self.pack_start(self.scroller, True, True, 0)
+        self.body.add_named(self.scroller, "grid")
 
         self.flowbox = Gtk.FlowBox()
-        self.flowbox.set_selection_mode(Gtk.SelectionMode.NONE)
+        self.flowbox.set_valign(Gtk.Align.START)
+        self.flowbox.set_max_children_per_line(4)
+        self.flowbox.set_min_children_per_line(1)
+        self.flowbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
+        self.flowbox.set_activate_on_single_click(True)
         self.flowbox.set_homogeneous(False)
-        self.flowbox.set_column_spacing(16)
-        self.flowbox.set_row_spacing(16)
-        self.flowbox.set_margin_top(20)
+        self.flowbox.set_column_spacing(20)
+        self.flowbox.set_row_spacing(20)
+        self.flowbox.set_margin_top(24)
         self.flowbox.set_margin_bottom(24)
-        self.flowbox.set_margin_start(24)
-        self.flowbox.set_margin_end(24)
+        self.flowbox.set_margin_start(28)
+        self.flowbox.set_margin_end(28)
+        self.flowbox.connect("child-activated", self._on_child_activated)
         self.scroller.add(self.flowbox)
 
-        self.empty_label = Gtk.Label(label="No videos found")
-        self.empty_label.get_style_context().add_class("empty-state")
-        self.empty_label.set_margin_top(80)
-        self.empty_label.set_visible(False)
-        self.pack_start(self.empty_label, False, False, 0)
+        empty = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        empty.set_valign(Gtk.Align.CENTER)
+        empty.set_halign(Gtk.Align.CENTER)
+        empty_label = Gtk.Label(label="No videos found")
+        empty_label.get_style_context().add_class("empty-state")
+        empty_hint = Gtk.Label(
+            label="Put MP4, MKV, MOV, or similar files in the media folder"
+        )
+        empty_hint.get_style_context().add_class("empty-hint")
+        empty.pack_start(empty_label, False, False, 0)
+        empty.pack_start(empty_hint, False, False, 0)
+        self.body.add_named(empty, "empty")
+
+        hint = Gtk.Label(
+            label="Click a title to open it    ·    Enter plays    ·    Esc goes back    ·    F11 fullscreen"
+        )
+        hint.set_xalign(0)
+        hint.get_style_context().add_class("hint-bar")
+        self.pack_start(hint, False, False, 0)
 
     def scan(self) -> None:
         for child in self.flowbox.get_children():
@@ -175,18 +314,40 @@ class LibraryView(Gtk.Box):
             key=lambda path: path.name.lower(),
         )
 
+        count = len(videos)
+        folder = self.media_directory.name
+        if count == 1:
+            self.subtitle.set_text(f"1 title  ·  {folder}")
+        else:
+            self.subtitle.set_text(f"{count} titles  ·  {folder}")
+
         for video in videos:
-            card = MediaCard(video, self.on_open)
+            card = MediaCard(video)
             self.cards.append(card)
             self.flowbox.add(card)
 
         self.show_all()
-        self.empty_label.set_visible(not videos)
+        self.body.set_visible_child_name("empty" if not videos else "grid")
+
+        children = self.flowbox.get_children()
+        if children:
+            self.flowbox.select_child(children[0])
+            self.flowbox.grab_focus()
 
         if self.thumbnail_provider is not None:
             threading.Thread(
                 target=self._generate_thumbnails, args=(videos,), daemon=True
             ).start()
+
+    def activate_selected(self) -> None:
+        selected = self.flowbox.get_selected_children()
+        if selected:
+            self._on_child_activated(self.flowbox, selected[0])
+
+    def _on_child_activated(self, _flowbox: Gtk.FlowBox, child: Gtk.FlowBoxChild) -> None:
+        card = child.get_child()
+        if isinstance(card, MediaCard):
+            self.on_open(card.video)
 
     def _generate_thumbnails(self, videos: list[Path]) -> None:
         provider = self.thumbnail_provider
@@ -209,23 +370,28 @@ class MockBackend:
     """GUI-only backend used by contributors without media packages."""
 
     def __init__(self) -> None:
-        self.preview_label: Gtk.Label | None = None
+        self.title_label: Gtk.Label | None = None
 
     def mount(self, container: Gtk.Box) -> None:
-        label = Gtk.Label(
-            label="GUI preview\nVideo playback is disabled in GUI-only mode"
-        )
-        label.set_justify(Gtk.Justification.CENTER)
-        label.get_style_context().add_class("preview-state")
-        container.pack_start(label, True, True, 0)
-        self.preview_label = label
+        stage = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        stage.set_valign(Gtk.Align.CENTER)
+        stage.set_halign(Gtk.Align.CENTER)
+        container.get_style_context().add_class("preview-stage")
+
+        title = Gtk.Label(label="Select a title from the library")
+        title.set_justify(Gtk.Justification.CENTER)
+        title.get_style_context().add_class("preview-state")
+        hint = Gtk.Label(label="Playback is a preview in GUI-only mode")
+        hint.set_justify(Gtk.Justification.CENTER)
+        hint.get_style_context().add_class("preview-hint")
+        stage.pack_start(title, False, False, 0)
+        stage.pack_start(hint, False, False, 0)
+        container.pack_start(stage, True, True, 0)
+        self.title_label = title
 
     def play(self, video: Path) -> None:
-        if self.preview_label is not None:
-            self.preview_label.set_text(
-                f"GUI preview\n\n{video.name}\n\n"
-                "Video playback is disabled in GUI-only mode"
-            )
+        if self.title_label is not None:
+            self.title_label.set_text(video.stem)
 
     def stop(self) -> None:
         pass
@@ -243,20 +409,22 @@ class PlayerView(Gtk.Box):
         self.on_back = on_back
         self.backend = backend
 
-        toolbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        toolbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         toolbar.get_style_context().add_class("player-bar")
         self.pack_start(toolbar, False, False, 0)
 
-        back = Gtk.Button.new_from_icon_name(
-            "go-previous-symbolic", Gtk.IconSize.BUTTON
+        back = Gtk.Button.new_with_label("Library")
+        back.set_image(
+            Gtk.Image.new_from_icon_name("go-previous-symbolic", Gtk.IconSize.BUTTON)
         )
-        back.set_label(" Library")
+        back.set_always_show_image(True)
         back.connect("clicked", lambda *_args: self.stop())
         toolbar.pack_start(back, False, False, 0)
 
         self.title = Gtk.Label()
         self.title.set_xalign(0)
         self.title.set_ellipsize(Pango.EllipsizeMode.END)
+        self.title.get_style_context().add_class("player-title")
         toolbar.pack_start(self.title, True, True, 0)
 
         self.video_area = Gtk.Box()
@@ -297,6 +465,8 @@ class MediaPlayerWindow(Gtk.Window):
         self.connect("key-press-event", self._on_key_press)
 
         self.stack = Gtk.Stack()
+        self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
+        self.stack.set_transition_duration(150)
         self.add(self.stack)
 
         self.library = LibraryView(
@@ -322,7 +492,9 @@ class MediaPlayerWindow(Gtk.Window):
 
     def _on_key_press(self, _widget, event) -> bool:
         key = Gdk.keyval_name(event.keyval)
-        if self.stack.get_visible_child_name() == "player":
+        on_player = self.stack.get_visible_child_name() == "player"
+
+        if on_player:
             if key in {"Escape", "q"}:
                 self.player.stop()
                 return True
@@ -335,7 +507,12 @@ class MediaPlayerWindow(Gtk.Window):
             if key == "Right":
                 self.player.seek(10)
                 return True
-        elif key == "F11":
+            return False
+
+        if key in {"Return", "KP_Enter"}:
+            self.library.activate_selected()
+            return True
+        if key == "F11":
             window = self.get_window()
             if window is not None:
                 self.set_fullscreen_mode(
