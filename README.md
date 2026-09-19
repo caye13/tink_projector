@@ -276,6 +276,66 @@ Bullseye: `sudo apt install pipewire pipewire-pulse wireplumber` or
 appears later, the next title you play uses it. The current video keeps its
 audio device until it ends (playbin cannot swap sinks mid-flight).
 
+## Remote control (SSH / Arduino breadboard buttons)
+
+On the Pi there is no attached keyboard — you're on SSH, and SSH input never
+reaches the app running in the Pi's local graphics seat. Two supported
+options, both using the same 6-button layout:
+
+| button | home / library | player |
+| ------ | -------------- | ------ |
+| enter  | activate (play) | pause / play |
+| back   | previous screen | exit video |
+| left / right | move selection | seek ±10 s |
+| up / down | move selection by row / alias of left-right | — |
+
+### Option A — UDP control port (recommended for the breadboard)
+
+Run the player with a control port on the Pi:
+
+```bash
+python3 media_player.py --control-port 5005
+```
+
+Any device on the network sends commands:
+
+```bash
+python3 control_server.py send enter <pi-ip> 5005
+echo -n "back" | nc -u -w1 <pi-ip> 5005
+```
+
+An Arduino with an ESP8266/ESP32 module (or an ESP32 board) reads the
+breadboard buttons and sends one datagram per press:
+
+```cpp
+// ESP32/Arduino: button on GPIO with INPUT_PULLUP -> UDP command
+#include <WiFi.h>
+#include <WiFiUdp.h>
+// ... button debouncing: on press, send:
+// Udp.beginPacket("pi-ip", 5005); Udp.print("enter"); Udp.endPacket();
+```
+
+Command vocabulary (context-sensitive): `enter`, `back`, `left`, `right`,
+`up`, `down` (+ aliases `ok`, `play`, `pause`, `home`, `rew`, `ff`,
+`fullscreen`). Keyboard input on a PC maps to the same behavior
+(`ui.py:1011 _dispatch`), so both stay in sync.
+
+### Option B — Arduino as USB HID keyboard (zero app changes)
+
+An Arduino Micro/Pro Micro (ATmega32U4) can present itself as a keyboard:
+buttons wired to INPUT_PULLUP pins emit real keypresses, the Pi mounts it
+as a HID device, and the player's key handler reacts natively:
+
+```cpp
+#include <Keyboard.h>
+// buttons (active-low): enter=Return, back=Esc,
+// left/right=arrows (seek), up/down=arrows (library nav)
+Keyboard.press(KEY_RETURN); Keyboard.releaseAll();
+```
+
+Keyboard map on the player: `Space`/`Enter` pause, `Esc`/`q` exit,
+`←`/`→` seek ±10 s. On home: arrows move, `Enter` picks.
+
 ## Raspberry Pi migration (Pi 4B + DLPDLCR230NPEVM over 40-pin)
 
 Hardware: EVM `J2` (40-pin) to Pi GPIO0–21 for 18-bit DPI video, plus

@@ -118,6 +118,16 @@ def parse_args() -> argparse.Namespace:
         help="print detected audio sinks and exit",
     )
     parser.add_argument(
+        "--control-port",
+        type=int,
+        default=0,
+        help=(
+            "listen for UDP remote-control commands (back/enter/left/right/"
+            "play...) on this port, e.g. --control-port 5005. Needed on the "
+            "Pi because SSH keyboard input cannot reach the local seat."
+        ),
+    )
+    parser.add_argument(
         "--list-displays",
         action="store_true",
         help="print detected DRM/GDK outputs and exit",
@@ -178,6 +188,28 @@ def main() -> int:
         audio_monitor = AudioMonitor(on_change=_on_audio_change)
         audio_monitor.start()
 
+    window_holder: dict[str, object] = {}
+
+    control_server = None
+    if args.control_port:
+        try:
+            from control_server import ControlServer
+
+            def _handle_command(command: str) -> bool:
+                win = window_holder.get("window")
+                if win is None:
+                    return False
+                return bool(win.dispatch_command(command))
+
+            control_server = ControlServer(_handle_command, args.control_port)
+        except Exception as exc:
+            print(f"Control server: unavailable ({exc})")
+
+    def _wire_window(win) -> None:
+        window_holder["window"] = win
+        if control_server is not None and control_server.start():
+            print(f"Control server: UDP :{control_server.port} ready")
+
     return run(
         args.media_dir,
         args.fullscreen,
@@ -185,6 +217,7 @@ def main() -> int:
         thumbnail_provider,
         monitor,
         target,
+        on_window=_wire_window,
     )
 
 

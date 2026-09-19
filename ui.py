@@ -74,6 +74,7 @@ def is_junk_media(path: Path) -> bool:
 CARD_WIDTH = 320
 CARD_HEIGHT = 180
 SPLASH_MS = 2000
+LIBRARY_COLUMNS = 4
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 LOGO_PATH = ASSETS_DIR / "tink-logo.png"
 
@@ -729,6 +730,16 @@ class LibraryView(Gtk.Box):
                 target=self._generate_thumbnails, args=(videos,), daemon=True
             ).start()
 
+    def move_selection(self, delta: int) -> None:
+        """Move the selected library card by ``delta`` items (remote nav)."""
+        children = self.flowbox.get_children()
+        if not children:
+            return
+        selected = self.flowbox.get_selected_children()
+        index = children.index(selected[0]) if selected else 0
+        index = max(0, min(len(children) - 1, index + delta))
+        self.flowbox.select_child(children[index])
+
     def activate_selected(self) -> None:
         selected = self.flowbox.get_selected_children()
         if selected:
@@ -942,6 +953,80 @@ class MediaPlayerWindow(Gtk.Window):
                 )
             return True
 
+        return self._dispatch(screen, key)
+
+    def dispatch_command(self, command: str) -> bool:
+        """Handle a 6-button remote: enter, back, left, right, up, down.
+
+        Context-sensitive, matching physical-button semantics:
+
+        - ``enter``: activate on home/library, play-pause on the player.
+        - ``back``: exit the video (player) / go up one screen.
+        - ``left``/``right``: move selection (home/library), seek ±10 s
+          (player).
+        - ``up``/``down``: move selection by row (library), alias of
+          left/right on home; no-op on the player.
+        """
+        command = (command or "").strip().lower()
+        if not command:
+            return False
+        screen = self.stack.get_visible_child_name()
+
+        if screen == "splash":
+            self.splash.finish()
+            return True
+
+        if command in {"back", "exit", "home", "escape"}:
+            return self._dispatch(screen, "Escape")
+
+        if command in {"enter", "ok", "select", "play", "pause", "playpause"}:
+            if screen == "player":
+                return self._dispatch(screen, "space")
+            if screen in {"home", "library"}:
+                return self._dispatch(screen, "Return")
+            return False
+
+        if command in {"left", "right"}:
+            if screen == "home":
+                self.home.move_selection(-1 if command == "left" else 1)
+                return True
+            if screen == "library":
+                self.library.move_selection(-1 if command == "left" else 1)
+                return True
+            if screen == "player":
+                return self._dispatch(
+                    screen, "Left" if command == "left" else "Right"
+                )
+            return False
+
+        if command in {"up", "down"}:
+            if screen == "home":
+                self.home.move_selection(-1 if command == "up" else 1)
+                return True
+            if screen == "library":
+                self.library.move_selection(
+                    -LIBRARY_COLUMNS if command == "up" else LIBRARY_COLUMNS
+                )
+                return True
+            return False
+
+        if command in {"rew", "prev"} and screen == "player":
+            return self._dispatch(screen, "Left")
+        if command in {"ff", "next"} and screen == "player":
+            return self._dispatch(screen, "Right")
+        if command == "fullscreen":
+            return self._dispatch(screen, "F11")
+        return False
+
+    def _dispatch(self, screen: str | None, key: str | None) -> bool:
+        if key == "F11":
+            window = self.get_window()
+            if window is not None:
+                self.set_fullscreen_mode(
+                    not bool(window.get_state() & Gdk.WindowState.FULLSCREEN)
+                )
+            return True
+
         if screen == "splash":
             self.splash.finish()
             return True
@@ -968,13 +1053,25 @@ class MediaPlayerWindow(Gtk.Window):
             if key in {"Return", "KP_Enter"}:
                 self.library.activate_selected()
                 return True
+            if key == "Left":
+                self.library.move_selection(-1)
+                return True
+            if key == "Right":
+                self.library.move_selection(1)
+                return True
+            if key == "Up":
+                self.library.move_selection(-LIBRARY_COLUMNS)
+                return True
+            if key == "Down":
+                self.library.move_selection(LIBRARY_COLUMNS)
+                return True
             return False
 
         if screen == "player":
             if key in {"Escape", "q"}:
                 self.player.stop()
                 return True
-            if key == "space":
+            if key in {"space", "Return", "KP_Enter"}:
                 self.player.toggle_pause()
                 return True
             if key == "Left":
@@ -1076,6 +1173,7 @@ def run(
     usb_monitor: UsbMonitor | None = None,
     display_target: DisplayTarget | None = None,
     display_preference: str = "auto",
+    on_window: Callable[[MediaPlayerWindow], None] | None = None,
 ) -> int:
     Gtk.init([])
     load_css()
@@ -1096,5 +1194,7 @@ def run(
         display_target,
     )
     window.present()
+    if on_window is not None:
+        on_window(window)
     Gtk.main()
     return 0
