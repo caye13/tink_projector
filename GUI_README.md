@@ -173,13 +173,24 @@ python run_gui.py --media-dir ./gui-media --fullscreen
 In GUI-only mode, selecting a card opens a mock player screen. The visual
 interface can be developed without any real video files or codecs.
 
-> **Legacy note:** Older docs mention `python media_player.py --gui-only`. That flag existed before the UI was split into `ui.py` + backends. The current GUI-only entry point is `run_gui.py`. The full player `media_player.py` requires GStreamer (`gst-plugin-gtk` etc.) and does not have `--gui-only`.
+> **Legacy note:** The old `--gui-only` flag on `media_player.py` is back,
+> wired through `media_player.build_backends(gui_only=True)`. Both
+> `python run_gui.py --media-dir ./gui-media` and
+> `python media_player.py --media-dir ./gui-media --gui-only` run the GUI
+> preview; the former never imports GStreamer at all.
 
 The normal (full) mode remains available for the owner of the project:
 
 ```bash
 python media_player.py --media-dir ./media
 ```
+
+`media_player.py` now runs the same `ui.py` screens with real playback:
+GStreamer (`playbin` + `gtksink`), ffmpeg thumbnails, USB library merge,
+and output selection (`--display`, default auto = PC panel / Pi DPI
+projector). Use `--gui-only` to force the preview backend without
+GStreamer. If GStreamer is missing it degrades to the mock backend with a
+console warning.
 
 ## 4. GUI-only mode behavior
 
@@ -198,12 +209,19 @@ The split architecture keeps GUI code free of hardware imports:
 ```text
 ui.py                 Main GUI code (CSS, cards, library, player view, window)
 run_gui.py            GUI-only launcher — uses ui.MockBackend + UsbMonitor
+media_player.py       Full launcher — ui.run() + GStreamerBackend + thumbnails
+                      + UsbMonitor + display targets (Pi DPI / PC panel)
 usb_monitor.py        USB hotplug detection (psutil/pyudev/Gio, optional imports)
+display_output.py     PC panel vs Pi DPI output detection (stdlib only, no pip)
 requirements.txt      USB pip packages (psutil, pyudev linux-only, pyusb)
 gstreamer_backend.py  GStreamer backend (do not edit for GUI work)
 media_backend.py      Thumbnail helper (do not edit for GUI work)
-media_player.py       Full player that wires GStreamer + UI together
 ```
+
+> GUI contributors stay on `--display panel` (the default on PC). Do not
+> hardcode DPI sizes or fullscreen — `display_output.resolve_target("auto")`
+> already picks panel on PC and `DPI-1` fullscreen on the Pi 4. Use
+> `python run_gui.py --list-displays` to inspect outputs without a display.
 
 Main areas inside `ui.py` (`tink_projector/ui.py:40`):
 
@@ -226,7 +244,7 @@ Run the syntax check:
 
 ```bash
 source .venv/bin/activate
-python -m py_compile ui.py run_gui.py usb_monitor.py
+python -m py_compile ui.py run_gui.py usb_monitor.py display_output.py
 ```
 
 Run the GUI-only application:
