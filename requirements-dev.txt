@@ -1,0 +1,7 @@
+# Dev-only dependencies (type checking / LSP). Not needed at runtime.
+# Install with: source .venv/bin/activate && pip install -r requirements-dev.txt
+-r requirements.txt
+
+# Stubs for gi.repository (Gtk/Gdk/Gio/Gst) so pyright stops reporting
+# `"Gdk" is unknown import symbol` etc. Runtime still uses system python-gobject.
+PyGObject-stubs>=2.8

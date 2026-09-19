@@ -1,0 +1,25 @@
+# Rasp UI / TINK projector — runtime dependencies (pip side)
+#
+# System packages still provide GTK/GStreamer/gi (see README.md):
+#   Linux (Arch/Omarchy/Pi): sudo pacman -S python-gobject gtk3 python-psutil python-pyusb
+#   macOS (Homebrew):        brew install python@3.13 gtk+3 pygobject3 gobject-introspection cairo libusb
+#
+# The venv MUST be created with --system-site-packages so `gi` is visible:
+#   /usr/bin/python -m venv --system-site-packages .venv          # Linux
+#   /opt/homebrew/bin/python3 -m venv --system-site-packages .venv  # macOS
+#
+# Install with:  source .venv/bin/activate && pip install -r requirements.txt
+
+# Cross-platform mount listing + polling fallback (Linux/macOS/Pi).
+# Already provided by `python-psutil` on Arch; pip covers macOS + venvs
+# without system site packages.
+psutil>=5.9
+
+# Event-driven udev monitor, Linux-only (Arch/Pi). Ignored on macOS.
+# Arch alternative: sudo pacman -S python-pyudev
+pyudev>=0.24; sys_platform == "linux"
+
+# Optional: raw USB device enumeration (VID/PID, non-storage devices).
+# Needs system libusb: pacman -S libusb  /  brew install libusb
+# Arch alternative: sudo pacman -S python-pyusb
+pyusb>=1.2

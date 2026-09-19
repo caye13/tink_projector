@@ -25,7 +25,12 @@ sudo pacman -Syu --needed \
   gst-python \
   ffmpeg \
   python-pillow \
-  python-numpy
+  python-numpy \
+  python-psutil \
+  python-pyudev \
+  python-pyusb \
+  libusb \
+  udisks2
 ```
 
 The player can play whatever codecs are supported by the installed GStreamer
@@ -47,6 +52,10 @@ brew install python@3.13 gtk+3 pygobject3 gobject-introspection cairo
 # GStreamer core + plugins + Python bindings
 brew install gstreamer gst-plugins-base gst-plugins-good gst-plugins-bad \
   gst-plugins-ugly gst-libav gst-python ffmpeg
+
+# USB detection (storage hotplug + raw USB enumeration)
+brew install libusb
+# pyudev is Linux-only — do NOT install it on macOS (pip marker excludes it)
 
 # Optional: verify GTK / gi is importable with the Homebrew Python
 /opt/homebrew/bin/python3 -c "import gi; gi.require_version('Gtk','3.0'); from gi.repository import Gtk; print('gi OK')"
@@ -105,11 +114,54 @@ python -c "import gi; print('venv gi OK:', gi.__file__)"
 > # or /opt/homebrew/bin/python3 -m venv --system-site-packages .venv  # macOS
 > ```
 
+### USB detection packages (both platforms)
+
+USB plug/unplug detection lives in `usb_monitor.py` and needs these pip
+packages on top of the system libraries above:
+
+```bash
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+What that pulls in:
+
+- `psutil` — mount listing + polling fallback (Linux/macOS/Pi). System
+  alternative on Arch: `sudo pacman -S python-psutil`.
+- `pyudev` — event-driven udev monitor, **Linux-only** (Arch/Pi). The
+  `sys_platform == "linux"` marker skips it on macOS. System alternative:
+  `sudo pacman -S python-pyudev`.
+- `pyusb` — optional raw USB enumeration (VID/PID for non-storage devices).
+  Needs system `libusb` (`pacman -S libusb` / `brew install libusb`).
+  System alternative on Arch: `sudo pacman -S python-pyusb`.
+
+No extra package is needed for the primary event source:
+`Gio.VolumeMonitor` comes with `python-gobject` / `pygobject3` and fires
+`mount-added` / `mount-removed` straight into the GTK main loop. `pyudev`
+and `psutil` polling are automatic fallbacks. If none are installed the
+monitor degrades to disabled instead of crashing.
+
+Verify USB detection:
+
+```bash
+source .venv/bin/activate
+python - <<'PY'
+from usb_monitor import list_usb_drives, list_usb_devices_raw, UsbMonitor
+print("drives:", [(d.name, str(d.mount_path)) for d in list_usb_drives()])
+print("raw USB devices:", len(list_usb_devices_raw()))
+m = UsbMonitor()
+print("monitor backend:", m.start())
+m.stop()
+PY
+```
+
+Disable it per-run with `python run_gui.py --no-usb-monitor`.
+
 Optional — install stubs for better type checking in your editor (silences `Gdk` / `Gtk` unknown-import noise):
 
 ```bash
 source .venv/bin/activate
-pip install PyGObject-stubs
+pip install -r requirements-dev.txt
 ```
 
 ## Run locally

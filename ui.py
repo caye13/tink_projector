@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
-from typing import Callable, Protocol
+from typing import TYPE_CHECKING, Any, Callable, Protocol
+
+if TYPE_CHECKING:
+    from usb_monitor import UsbDrive, UsbMonitor
 
 import gi
 
@@ -402,6 +405,10 @@ class HomeView(Gtk.Box):
         self.computer_card = OptionCard("computer", "teal", self._choose_computer)
         row.pack_start(self.usb_card, False, False, 0)
         row.pack_start(self.computer_card, False, False, 0)
+
+        self.usb_status = Gtk.Label(label="plug in a USB drive")
+        self.usb_status.get_style_context().add_class("preview-hint")
+        stage.pack_start(self.usb_status, False, False, 0)
         self._refresh()
 
     def move_selection(self, delta: int) -> None:
@@ -423,6 +430,20 @@ class HomeView(Gtk.Box):
         self.selected = 1
         self._refresh()
         self.on_computer()
+
+    def set_usb_drives(self, drives: list[Any]) -> None:
+        """Update the USB status line. Accepts list[UsbDrive], duck-typed."""
+        try:
+            count = len(drives)
+        except TypeError:
+            count = 0
+        if count == 0:
+            self.usb_status.set_text("plug in a USB drive")
+        elif count == 1:
+            name = getattr(drives[0], "name", "USB")
+            self.usb_status.set_text(f"1 USB drive · {name}")
+        else:
+            self.usb_status.set_text(f"{count} USB drives")
 
     def _refresh(self) -> None:
         self.usb_card.set_selected(self.selected == 0)
@@ -526,11 +547,13 @@ class LibraryView(Gtk.Box):
         on_open: Callable[[Path], None],
         on_home: Callable[[], None],
         thumbnail_provider: Callable[[Path], Path | None] | None = None,
+        extra_media_dirs: list[Path] | None = None,
     ) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self.media_directory = media_directory
         self.on_open = on_open
         self.thumbnail_provider = thumbnail_provider
+        self.extra_media_dirs: list[Path] = list(extra_media_dirs or [])
         self.cards: list[MediaCard] = []
 
         header = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
@@ -601,27 +624,57 @@ class LibraryView(Gtk.Box):
         hint.get_style_context().add_class("hint-bar")
         self.pack_start(hint, False, False, 0)
 
+    def set_extra_media_dirs(self, dirs: list[Path]) -> None:
+        """Set additional scan roots (e.g. USB mount points)."""
+        seen: list[Path] = []
+        for root in dirs:
+            try:
+                resolved = root.expanduser().resolve()
+            except OSError:
+                continue
+            if resolved not in seen:
+                seen.append(resolved)
+        self.extra_media_dirs = seen
+
+    def _scan_roots(self) -> list[Path]:
+        roots = [self.media_directory]
+        roots.extend(
+            root for root in self.extra_media_dirs if root not in roots
+        )
+        return roots
+
     def scan(self) -> None:
         for child in self.flowbox.get_children():
             self.flowbox.remove(child)
         self.cards.clear()
 
         self.media_directory.mkdir(parents=True, exist_ok=True)
-        videos = sorted(
-            (
-                path
-                for path in self.media_directory.rglob("*")
-                if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS
-            ),
-            key=lambda path: path.name.lower(),
-        )
+        videos: list[Path] = []
+        for root in self._scan_roots():
+            if not root.exists():
+                continue
+            try:
+                found = [
+                    path
+                    for path in root.rglob("*")
+                    if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS
+                ]
+            except OSError:
+                continue
+            videos.extend(found)
+        videos = sorted(videos, key=lambda path: path.name.lower())
 
         count = len(videos)
         folder = self.media_directory.name
-        if count == 1:
-            self.subtitle.set_text(f"1 title  ·  {folder}")
+        usb_count = len(self.extra_media_dirs)
+        if usb_count:
+            suffix = f"{folder} + {usb_count} USB"
         else:
-            self.subtitle.set_text(f"{count} titles  ·  {folder}")
+            suffix = folder
+        if count == 1:
+            self.subtitle.set_text(f"1 title  ·  {suffix}")
+        else:
+            self.subtitle.set_text(f"{count} titles  ·  {suffix}")
 
         for video in videos:
             card = MediaCard(video)
@@ -756,11 +809,13 @@ class MediaPlayerWindow(Gtk.Window):
         fullscreen: bool,
         backend: PlaybackBackend,
         thumbnail_provider: Callable[[Path], Path | None] | None = None,
+        usb_monitor: UsbMonitor | None = None,
     ) -> None:
         super().__init__(title="TINK Projector")
         self.set_default_size(1280, 720)
         self.connect("delete-event", self._on_delete)
         self.connect("key-press-event", self._on_key_press)
+        self.usb_monitor = usb_monitor
 
         self.stack = Gtk.Stack()
         self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
@@ -786,6 +841,7 @@ class MediaPlayerWindow(Gtk.Window):
         GLib.timeout_add(SPLASH_MS, self.splash.finish)
         if fullscreen:
             self.fullscreen()
+        self._start_usb_monitor()
 
     def show_home(self) -> None:
         self.stack.set_visible_child_name("home")
@@ -859,7 +915,58 @@ class MediaPlayerWindow(Gtk.Window):
     def set_fullscreen_mode(self, fullscreen: bool) -> None:
         self.fullscreen() if fullscreen else self.unfullscreen()
 
+    def _start_usb_monitor(self) -> None:
+        monitor = self.usb_monitor
+        if monitor is None:
+            return
+        try:
+            set_callback = getattr(monitor, "set_on_change", None)
+            if callable(set_callback):
+                set_callback(self._on_usb_changed)
+            else:
+                monitor.on_change = self._on_usb_changed  # type: ignore[attr-defined]
+            backend_name = monitor.start()
+            print(f"USB monitor started ({backend_name})")
+        except Exception as exc:
+            print(f"USB monitor unavailable: {exc}")
+            return
+        try:
+            initial = list(monitor.current_drives)
+        except Exception:
+            initial = []
+        self._apply_usb_drives(initial)
+
+    def _on_usb_changed(self, drives: list[UsbDrive]) -> None:
+        self._apply_usb_drives(list(drives))
+
+    def _apply_usb_drives(self, drives: list[UsbDrive]) -> None:
+        try:
+            self.home.set_usb_drives(drives)
+        except Exception:
+            pass
+        try:
+            self.library.set_extra_media_dirs(
+                [drive.mount_path for drive in drives]
+            )
+        except Exception:
+            pass
+        try:
+            visible = self.stack.get_visible_child_name()
+        except Exception:
+            visible = None
+        if visible == "library":
+            try:
+                self.library.scan()
+            except Exception:
+                pass
+
     def _on_delete(self, *_args) -> bool:
+        monitor = self.usb_monitor
+        if monitor is not None:
+            try:
+                monitor.stop()
+            except Exception:
+                pass
         self.player.backend.stop()
         Gtk.main_quit()
         return False
@@ -870,6 +977,7 @@ def run(
     fullscreen: bool,
     backend: PlaybackBackend,
     thumbnail_provider: Callable[[Path], Path | None] | None = None,
+    usb_monitor: UsbMonitor | None = None,
 ) -> int:
     Gtk.init([])
     load_css()
@@ -878,6 +986,7 @@ def run(
         fullscreen,
         backend,
         thumbnail_provider,
+        usb_monitor,
     )
     window.present()
     Gtk.main()

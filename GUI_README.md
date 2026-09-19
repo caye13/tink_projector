@@ -32,17 +32,25 @@ The GUI contributor should not work on:
 sudo pacman -Syu --needed \
   python \
   python-gobject \
-  gtk3
+  gtk3 \
+  python-psutil \
+  python-pyudev \
+  python-pyusb \
+  libusb \
+  udisks2
 ```
 
 `python-gobject` provides the Python `gi` module used by GTK. Do not install
-PyGObject with `pip` (the system package is required).
+PyGObject with `pip` (the system package is required). `python-psutil` /
+`python-pyudev` / `python-pyusb` + `udisks2` enable USB plug/unplug detection
+(`usb_monitor.py`); the app still runs without them but won't auto-refresh on
+hotplug.
 
 ### macOS — Homebrew (Intel & Apple Silicon)
 
 ```bash
 brew update
-brew install python@3.13 gtk+3 pygobject3 gobject-introspection cairo
+brew install python@3.13 gtk+3 pygobject3 gobject-introspection cairo libusb
 
 # Verify the Homebrew Python can see GTK:
 # Apple Silicon:
@@ -52,6 +60,23 @@ brew install python@3.13 gtk+3 pygobject3 gobject-introspection cairo
 ```
 
 Only the GUI packages above are needed. You do **not** need GStreamer, FFmpeg, or `gst-*` plugins for GUI-only work.
+
+Then install the USB-detection pip packages (same on both platforms —
+`pyudev` auto-skips on macOS):
+
+```bash
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+- `psutil` — mount listing + polling fallback.
+- `pyudev` — Linux-only udev events (ignored on macOS).
+- `pyusb` — optional raw VID/PID enumeration (needs `libusb`).
+
+The primary event source needs no pip package: `Gio.VolumeMonitor` ships
+with `python-gobject` / `pygobject3`. If the pip packages are missing,
+`usb_monitor.UsbMonitor` degrades to disabled instead of crashing — the
+"external disk" card just won't auto-update.
 
 ## 2. Set up the project environment
 
@@ -98,10 +123,22 @@ print("GTK GUI environment is working")
 PY
 ```
 
+Verify USB detection (expects `[]` when no stick is plugged in):
+
+```bash
+python - <<'PY'
+from usb_monitor import list_usb_drives, UsbMonitor
+print("drives:", [(d.name, str(d.mount_path)) for d in list_usb_drives()])
+m = UsbMonitor()
+print("monitor backend:", m.start())  # gio+polling | pyudev | polling | disabled
+m.stop()
+PY
+```
+
 Optional — stubs for nicer type checking in your editor:
 
 ```bash
-pip install PyGObject-stubs
+pip install -r requirements-dev.txt
 ```
 
 ## 3. Run GUI-only mode
@@ -121,6 +158,11 @@ The GUI-only launcher is `run_gui.py` (uses `ui.py` + `MockBackend` and never im
 source .venv/bin/activate
 python run_gui.py --media-dir ./gui-media
 ```
+
+Plug in a USB stick and the home screen status changes from
+"plug in a USB drive" to "1 USB drive · NAME", while the library subtitle
+gains "+ 1 USB" and rescans automatically. Disable it with
+`python run_gui.py --media-dir ./gui-media --no-usb-monitor`.
 
 To test the projector-style fullscreen layout:
 
@@ -155,7 +197,9 @@ The split architecture keeps GUI code free of hardware imports:
 
 ```text
 ui.py                 Main GUI code (CSS, cards, library, player view, window)
-run_gui.py            GUI-only launcher — uses ui.MockBackend
+run_gui.py            GUI-only launcher — uses ui.MockBackend + UsbMonitor
+usb_monitor.py        USB hotplug detection (psutil/pyudev/Gio, optional imports)
+requirements.txt      USB pip packages (psutil, pyudev linux-only, pyusb)
 gstreamer_backend.py  GStreamer backend (do not edit for GUI work)
 media_backend.py      Thumbnail helper (do not edit for GUI work)
 media_player.py       Full player that wires GStreamer + UI together
@@ -182,7 +226,7 @@ Run the syntax check:
 
 ```bash
 source .venv/bin/activate
-python -m py_compile ui.py run_gui.py
+python -m py_compile ui.py run_gui.py usb_monitor.py
 ```
 
 Run the GUI-only application:
