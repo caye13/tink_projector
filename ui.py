@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Protocol
 
 if TYPE_CHECKING:
+    from display_output import DisplayTarget
     from usb_monitor import UsbDrive, UsbMonitor
 
 import gi
@@ -39,9 +40,41 @@ VIDEO_EXTENSIONS = {
     ".wmv",
 }
 
+# macOS/Windows filesystem junk that is never playable video.
+# - "._name.ext"   AppleDouble resource-fork forks copied from macOS
+# - ".Trashes", "$RECYCLE.BIN", "System Volume Information", ".Spotlight-V100",
+#   ".fseventsd", ".TemporaryItems" — hidden system folders on removable drives
+# - ".DS_Store" and other hidden files that only look like video by extension
+JUNK_DIRS = {
+    ".trashes",
+    ".spotlight-v100",
+    ".fseventsd",
+    ".temporaryitems",
+    "$recycle.bin",
+    "system volume information",
+    "lost+found",
+}
+
+
+def is_junk_media(path: Path) -> bool:
+    """True for AppleDouble files, hidden/system folders, and dotfiles."""
+    name = path.name
+    if name.startswith("._"):  # macOS AppleDouble resource fork
+        return True
+    if name.startswith("."):  # generic dotfiles (e.g. .DS_Store.mp4 copies)
+        return True
+    for part in path.parts[:-1]:  # every ancestor directory
+        part_lower = part.lower()
+        if part_lower in JUNK_DIRS or (
+            part_lower.startswith(".") and part_lower not in {".."}
+        ):
+            return True
+    return False
+
 CARD_WIDTH = 320
 CARD_HEIGHT = 180
 SPLASH_MS = 2000
+LIBRARY_COLUMNS = 4
 ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 LOGO_PATH = ASSETS_DIR / "tink-logo.png"
 
@@ -657,7 +690,10 @@ class LibraryView(Gtk.Box):
                 found = [
                     path
                     for path in root.rglob("*")
-                    if path.is_file() and path.suffix.lower() in VIDEO_EXTENSIONS
+                    if path.is_file()
+                    and path.suffix.lower() in VIDEO_EXTENSIONS
+                    and not is_junk_media(path)
+                    and path.stat().st_size > 0
                 ]
             except OSError:
                 continue
@@ -693,6 +729,16 @@ class LibraryView(Gtk.Box):
             threading.Thread(
                 target=self._generate_thumbnails, args=(videos,), daemon=True
             ).start()
+
+    def move_selection(self, delta: int) -> None:
+        """Move the selected library card by ``delta`` items (remote nav)."""
+        children = self.flowbox.get_children()
+        if not children:
+            return
+        selected = self.flowbox.get_selected_children()
+        index = children.index(selected[0]) if selected else 0
+        index = max(0, min(len(children) - 1, index + delta))
+        self.flowbox.select_child(children[index])
 
     def activate_selected(self) -> None:
         selected = self.flowbox.get_selected_children()
@@ -763,9 +809,14 @@ class PlayerView(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.VERTICAL)
         self.on_back = on_back
         self.backend = backend
+        self.theater_mode = False
 
         toolbar = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=12)
         toolbar.get_style_context().add_class("player-bar")
+        # Theater mode hides this bar; set_no_show_all keeps it hidden
+        # even when show_all() runs on the stack switch.
+        toolbar.set_no_show_all(True)
+        self.toolbar = toolbar
         self.pack_start(toolbar, False, False, 0)
 
         back = _header_button("Library")
@@ -781,17 +832,46 @@ class PlayerView(Gtk.Box):
         self.video_area = Gtk.Box()
         self.video_area.set_hexpand(True)
         self.video_area.set_vexpand(True)
-        self.pack_start(self.video_area, True, True, 0)
+        click = Gtk.EventBox()
+        click.add(self.video_area)
+        click.connect("button-press-event", self._on_video_click)
+        self.pack_start(click, True, True, 0)
         self.backend.mount(self.video_area)
         set_on_finished = getattr(self.backend, "set_on_finished", None)
         if set_on_finished is not None:
             set_on_finished(self.stop)
+        set_on_rebuild = getattr(self.backend, "set_on_rebuild", None)
+        if set_on_rebuild is not None:
+            set_on_rebuild(self._remount_video_widget)
+
+    def _remount_video_widget(self, widget: Gtk.Widget) -> None:
+        """Swap in a rebuilt video widget (live audio-output switch)."""
+        for child in self.video_area.get_children():
+            self.video_area.remove(child)
+        widget.set_hexpand(True)
+        widget.set_vexpand(True)
+        self.video_area.pack_start(widget, True, True, 0)
+        widget.show_all()
+
+    def set_theater_mode(self, enabled: bool) -> None:
+        """Hide/show the top bar (video fills the window while playing)."""
+        if enabled == self.theater_mode:
+            return
+        self.theater_mode = enabled
+        self.toolbar.set_visible(not enabled)
+
+    def _on_video_click(self, *_args) -> bool:
+        # Click the picture to toggle the bar (theater on/off).
+        self.set_theater_mode(not self.theater_mode)
+        return True
 
     def play(self, video: Path) -> None:
         self.title.set_text(video.name)
+        self.set_theater_mode(True)
         self.backend.play(video)
 
     def stop(self) -> None:
+        self.set_theater_mode(False)
         self.backend.stop()
         self.on_back()
 
@@ -810,12 +890,17 @@ class MediaPlayerWindow(Gtk.Window):
         backend: PlaybackBackend,
         thumbnail_provider: Callable[[Path], Path | None] | None = None,
         usb_monitor: UsbMonitor | None = None,
+        display_target: DisplayTarget | None = None,
     ) -> None:
         super().__init__(title="TINK Projector")
-        self.set_default_size(1280, 720)
         self.connect("delete-event", self._on_delete)
         self.connect("key-press-event", self._on_key_press)
         self.usb_monitor = usb_monitor
+        self.display_target = display_target
+        if display_target is not None:
+            self.set_default_size(display_target.width, display_target.height)
+        else:
+            self.set_default_size(1280, 720)
 
         self.stack = Gtk.Stack()
         self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
@@ -839,8 +924,7 @@ class MediaPlayerWindow(Gtk.Window):
 
         self.show_all()
         GLib.timeout_add(SPLASH_MS, self.splash.finish)
-        if fullscreen:
-            self.fullscreen()
+        self._apply_display(fullscreen)
         self._start_usb_monitor()
 
     def show_home(self) -> None:
@@ -861,6 +945,80 @@ class MediaPlayerWindow(Gtk.Window):
         key = Gdk.keyval_name(event.keyval)
         screen = self.stack.get_visible_child_name()
 
+        if key == "F11":
+            window = self.get_window()
+            if window is not None:
+                self.set_fullscreen_mode(
+                    not bool(window.get_state() & Gdk.WindowState.FULLSCREEN)
+                )
+            return True
+
+        return self._dispatch(screen, key)
+
+    def dispatch_command(self, command: str) -> bool:
+        """Handle a 6-button remote: enter, back, left, right, up, down.
+
+        Context-sensitive, matching physical-button semantics:
+
+        - ``enter``: activate on home/library, play-pause on the player.
+        - ``back``: exit the video (player) / go up one screen.
+        - ``left``/``right``: move selection (home/library), seek ±10 s
+          (player).
+        - ``up``/``down``: move selection by row (library), alias of
+          left/right on home; no-op on the player.
+        """
+        command = (command or "").strip().lower()
+        if not command:
+            return False
+        screen = self.stack.get_visible_child_name()
+
+        if screen == "splash":
+            self.splash.finish()
+            return True
+
+        if command in {"back", "exit", "home", "escape"}:
+            return self._dispatch(screen, "Escape")
+
+        if command in {"enter", "ok", "select", "play", "pause", "playpause"}:
+            if screen == "player":
+                return self._dispatch(screen, "space")
+            if screen in {"home", "library"}:
+                return self._dispatch(screen, "Return")
+            return False
+
+        if command in {"left", "right"}:
+            if screen == "home":
+                self.home.move_selection(-1 if command == "left" else 1)
+                return True
+            if screen == "library":
+                self.library.move_selection(-1 if command == "left" else 1)
+                return True
+            if screen == "player":
+                return self._dispatch(
+                    screen, "Left" if command == "left" else "Right"
+                )
+            return False
+
+        if command in {"up", "down"}:
+            if screen == "home":
+                self.home.move_selection(-1 if command == "up" else 1)
+                return True
+            if screen == "library":
+                self.library.move_selection(
+                    -LIBRARY_COLUMNS if command == "up" else LIBRARY_COLUMNS
+                )
+                return True
+            return False
+
+        if command in {"rew", "prev"} and screen == "player":
+            return self._dispatch(screen, "Left")
+        if command in {"ff", "next"} and screen == "player":
+            return self._dispatch(screen, "Right")
+        if command == "fullscreen":
+            return self._dispatch(screen, "F11")
+        return False
+
+    def _dispatch(self, screen: str | None, key: str | None) -> bool:
         if key == "F11":
             window = self.get_window()
             if window is not None:
@@ -895,13 +1053,25 @@ class MediaPlayerWindow(Gtk.Window):
             if key in {"Return", "KP_Enter"}:
                 self.library.activate_selected()
                 return True
+            if key == "Left":
+                self.library.move_selection(-1)
+                return True
+            if key == "Right":
+                self.library.move_selection(1)
+                return True
+            if key == "Up":
+                self.library.move_selection(-LIBRARY_COLUMNS)
+                return True
+            if key == "Down":
+                self.library.move_selection(LIBRARY_COLUMNS)
+                return True
             return False
 
         if screen == "player":
             if key in {"Escape", "q"}:
                 self.player.stop()
                 return True
-            if key == "space":
+            if key in {"space", "Return", "KP_Enter"}:
                 self.player.toggle_pause()
                 return True
             if key == "Left":
@@ -914,6 +1084,29 @@ class MediaPlayerWindow(Gtk.Window):
 
     def set_fullscreen_mode(self, fullscreen: bool) -> None:
         self.fullscreen() if fullscreen else self.unfullscreen()
+
+    def _apply_display(self, fullscreen_flag: bool) -> None:
+        """Place the window on the PC panel or the Pi DPI projector output."""
+        target = self.display_target
+        if target is None:
+            if fullscreen_flag:
+                self.fullscreen()
+            return
+        if fullscreen_flag and not target.fullscreen:
+            # Explicit --fullscreen from the CLI always wins on PC panel.
+            target.fullscreen = True
+        try:
+            from display_output import apply_to_window, describe
+
+            result = apply_to_window(self, target)
+            print(f"Display: {describe(target)} -> {result}")
+        except Exception as exc:
+            print(f"Display setup failed ({exc}); falling back")
+            try:
+                if fullscreen_flag or target.fullscreen:
+                    self.fullscreen()
+            except Exception:
+                pass
 
     def _start_usb_monitor(self) -> None:
         monitor = self.usb_monitor
@@ -978,16 +1171,30 @@ def run(
     backend: PlaybackBackend,
     thumbnail_provider: Callable[[Path], Path | None] | None = None,
     usb_monitor: UsbMonitor | None = None,
+    display_target: DisplayTarget | None = None,
+    display_preference: str = "auto",
+    on_window: Callable[[MediaPlayerWindow], None] | None = None,
 ) -> int:
     Gtk.init([])
     load_css()
+    if display_target is None:
+        try:
+            from display_output import resolve_target
+
+            display_target = resolve_target(display_preference)
+        except Exception as exc:
+            print(f"Display detection failed ({exc}); using panel default")
+            display_target = None
     window = MediaPlayerWindow(
         media_directory.expanduser().resolve(),
         fullscreen,
         backend,
         thumbnail_provider,
         usb_monitor,
+        display_target,
     )
     window.present()
+    if on_window is not None:
+        on_window(window)
     Gtk.main()
     return 0
