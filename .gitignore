@@ -164,3 +164,9 @@ dlpdlcr230np_python_support_code/
 .env.*.local
 *.pem
 *.key
+
+# Arduino build artifacts
+arduino/**/build/
+arduino/**/*.elf
+arduino/**/*.hex
+arduino/**/*.eep
